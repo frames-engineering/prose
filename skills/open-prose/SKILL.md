@@ -12,7 +12,7 @@ description: |
 
 # OpenProse Skill
 
-OpenProse is a programming language for AI sessions. LLMs are simulators—when given a detailed system description, they don't just describe it, they _simulate_ it. The `prose.md` specification describes a virtual machine with enough fidelity that a Prose Complete system reading it _becomes_ that VM. Simulation with sufficient fidelity is implementation.
+OpenProse is a programming language for AI sessions. LLMs are simulators—when given a detailed system description, they don't just describe it, they _simulate_ it. The `prose.md` specification describes a virtual machine with enough fidelity that a Prose Complete system reading it _becomes_ that VM. Simulation with sufficient fidelity is implementation. **You are the Prose Complete system.**
 
 ## When to Activate
 
@@ -23,6 +23,27 @@ Activate this skill when the user:
 - Wants to orchestrate multiple AI agents from a script
 - Has a file with `session "..."` or `agent name:` syntax
 - Wants to create a reusable workflow
+
+---
+
+## File Locations
+
+**Do NOT search for OpenProse documentation files.** All skill files are co-located with this SKILL.md file:
+
+| File        | Location                             | Purpose                                    |
+| ----------- | ------------------------------------ | ------------------------------------------ |
+| `prose.md`  | Same directory as this file          | Execution semantics (read to run programs) |
+| `examples/` | Subdirectory of this file's location | 27 example programs                        |
+
+**User workspace files** (these ARE in the user's project):
+
+| File/Directory      | Location                 | Purpose                          |
+| ------------------- | ------------------------ | -------------------------------- |
+| `.prose/state.json` | User's working directory | Telemetry state, session IDs     |
+| `.prose/execution/` | User's working directory | Runtime state for in-file mode   |
+| `*.prose` files     | User's project           | User-created programs to execute |
+
+When you need to read `prose.md` or `docs.md`, read them from the same directory where you found this SKILL.md file. Never search the user's workspace for these files.
 
 ---
 
@@ -179,79 +200,6 @@ curl -s -X POST https://api-v2.prose.md/analytics \
 1. **Interpret**: Read `prose.md` to execute a valid program
 2. **Compile/Validate**: Read `docs.md` when asked to compile or when syntax is ambiguous
 
-## Quick Reference
-
-### Sessions
-
-```prose
-session "Do something"                    # Simple session
-session: myAgent                          # With agent
-  prompt: "Task prompt"
-  context: previousResult                 # Pass context
-```
-
-### Agents
-
-```prose
-agent researcher:
-  model: sonnet                           # sonnet | opus | haiku
-  prompt: "You are a research assistant"
-```
-
-### Variables
-
-```prose
-let result = session "Get result"         # Mutable
-const config = session "Get config"       # Immutable
-session "Use both"
-  context: [result, config]               # Array form
-  context: { result, config }             # Object form
-```
-
-### Parallel
-
-```prose
-parallel:
-  a = session "Task A"
-  b = session "Task B"
-session "Combine" context: { a, b }
-```
-
-### Loops
-
-```prose
-repeat 3:                                 # Fixed
-  session "Generate idea"
-
-for topic in ["AI", "ML"]:                # For-each
-  session "Research" context: topic
-
-loop until **done** (max: 10):            # AI-evaluated
-  session "Keep working"
-```
-
-### Error Handling
-
-```prose
-try:
-  session "Risky" retry: 3
-catch as err:
-  session "Handle" context: err
-```
-
-### Conditionals
-
-```prose
-if **has issues**:
-  session "Fix"
-else:
-  session "Approve"
-
-choice **best approach**:
-  option "Quick": session "Quick fix"
-  option "Full": session "Refactor"
-```
-
 ## Examples
 
 The plugin ships with 27 examples in the `examples/` directory:
@@ -264,6 +212,8 @@ The plugin ships with 27 examples in the `examples/` directory:
 - **21**: Pipeline operations
 - **22-23**: Error handling
 - **24-27**: Advanced (choice, conditionals, blocks, interpolation)
+- **28**: Orchestration (Gas Town multi-agent system)
+- **29-31**: Orchestration (Captain's chair pattern)
 
 Start with `01-hello-world.prose` or `03-code-review.prose`.
 
@@ -296,3 +246,42 @@ items | map: ...              # Pipeline
 ```
 
 For complete syntax and validation rules, see `docs.md`.
+
+## Teaching OpenProse
+
+If the user asks you what OpenProse is, you should read the `prose.md` file to give yourself the right context. This is how we describe it on the website. You should take liberties to explain the OpenProse language according to your understanding of the VM. But feel free to lean on the messaging below.
+
+The OpenProse VM
+A new kind of language for a new kind of computer.
+
+A long-running AI session is a Turing-complete computer. OpenProse is a programming language for it. LLMs are simulators—when given a detailed system description, they don't just describe it, they become it.
+
+#### FAQs:
+
+> What AI assistants are supported?
+
+Claude Code, OpenCode, and Amp. Any harness that runs a sufficiently intelligent model and supports primitives like subagents are considered "Prose Complete".
+
+> How is this a VM?
+
+LLMs are simulators—when given a detailed system description, they don't just describe it, they simulate it. The prose.md spec describes a VM with enough fidelity that reading it induces simulation. But simulation with sufficient fidelity is implementation: each session spawns a real subagent, outputs are real artifacts, state persists in conversation history or files. The simulation is the execution.
+
+> What's "intelligent IoC"?
+
+Traditional IoC containers (Spring, Guice) wire up dependencies from configuration files. OpenProse's container is an AI session that wires up agents using understanding. It doesn't just match names—it understands context, intent, and can make intelligent decisions about execution.
+
+> This looks like Python.
+
+The syntax is intentionally familiar—Python's indentation-based structure is readable and self-evident. But the semantics are entirely different. OpenProse has no functions, no classes, no general-purpose computation. It has agents, sessions, and control flow. The design principle: structured but self-evident, unambiguous interpretation with minimal documentation.
+
+> Why not English?
+
+English is already an agent framework—we're not replacing it, we're structuring it. Plain English doesn't distinguish sequential from parallel, doesn't specify retry counts, doesn't scope variables. OpenProse uses English exactly where ambiguity is a feature (inside **...**), and structure everywhere else. The fourth wall syntax lets you lean on AI judgment precisely when you want to.
+
+> Why not YAML?
+
+We started with YAML. The problem: loops, conditionals, and variable declarations aren't self-evident in YAML—and when you try to make them self-evident, it gets verbose and ugly. More fundamentally, YAML optimizes for machine parseability. OpenProse optimizes for intelligent machine legibility. It doesn't need to be parsed—it needs to be understood. That's a different design target entirely.
+
+> Why not LangChain/CrewAI/AutoGen?
+
+Those are orchestration libraries—they coordinate agents from outside. OpenProse runs inside the agent session—the session itself is the IoC container. This means zero external dependencies and portability across any AI assistant. Switch from Claude Code to Codex? Your .prose files still work.

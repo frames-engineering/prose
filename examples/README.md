@@ -71,11 +71,59 @@ These examples demonstrate workflows using OpenProse's full feature set.
 | `26-parameterized-blocks.prose` | Reusable blocks with arguments |
 | `27-string-interpolation.prose` | Dynamic prompts with {var} syntax |
 
-### Orchestration Systems (28)
+### Orchestration Systems (28-31)
 
 | File | Description |
 |------|-------------|
 | `28-gas-town.prose` | Multi-agent orchestration ("Kubernetes for agents") with 7 worker roles, patrols, convoys, and GUPP propulsion |
+| `29-captains-chair.prose` | Full captain's chair pattern: coordinating agent dispatches subagents for all work, with parallel research, critic review cycles, and checkpoint validation |
+| `30-captains-chair-simple.prose` | Minimal captain's chair: core pattern without complexity |
+| `31-captains-chair-with-memory.prose` | Captain's chair with retrospective analysis and session-to-session learning |
+
+## The Captain's Chair Pattern
+
+The captain's chair is an orchestration paradigm where a coordinating agent (the "captain") dispatches specialized subagents for all execution. The captain never writes code directly—only plans, coordinates, and validates.
+
+**Key principles:**
+
+1. **Context isolation**: Subagents receive targeted context, not everything
+2. **Parallel execution**: Multiple subagents work concurrently where possible
+3. **Continuous criticism**: Critic agents review plans and outputs mid-stream
+4. **80/20 planning**: 80% effort on planning, 20% on execution oversight
+5. **Checkpoint validation**: User approval at key decision points
+
+```prose
+# The core pattern
+agent captain:
+  model: opus
+  prompt: "Coordinate but never execute directly"
+
+agent executor:
+  model: sonnet
+  prompt: "Execute assigned tasks precisely"
+
+agent critic:
+  model: sonnet
+  prompt: "Review work and find issues"
+
+# Captain plans
+let plan = session: captain
+  prompt: "Break down this task"
+
+# Parallel execution with criticism
+parallel:
+  work = session: executor
+    context: plan
+  review = session: critic
+    context: plan
+
+# Captain validates
+output result = session: captain
+  prompt: "Validate and integrate"
+  context: { work, review }
+```
+
+See examples 29-31 for full implementations.
 
 ## Running Examples
 
