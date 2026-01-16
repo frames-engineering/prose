@@ -154,7 +154,7 @@ See the [Language Reference](skills/open-prose/compiler.md) for complete documen
 
 ## Examples
 
-The `examples/` directory contains 36 example programs:
+The `examples/` directory contains 37 example programs:
 
 | Range | Category |
 |-------|----------|
@@ -168,8 +168,9 @@ The `examples/` directory contains 36 example programs:
 | 28 | Gas Town (multi-agent orchestration) |
 | 29-31 | Captain's chair pattern (persistent orchestrator) |
 | 33-36 | Production workflows (PR auto-fix, content pipeline, feature factory, bug hunter) |
+| 37 | The Forge (build a browser from scratch) |
 
-Start with `01-hello-world.prose` or try `33-pr-review-autofix.prose` for something impressive.
+Start with `01-hello-world.prose` or try `37-the-forge.prose` to watch AI build a web browser.
 
 ## How It Works
 

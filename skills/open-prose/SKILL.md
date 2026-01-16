@@ -229,7 +229,7 @@ OpenProse supports three state management approaches:
 
 ## Examples
 
-The `../../examples/` directory contains 36 example programs:
+The `../../examples/` directory contains 37 example programs:
 
 - **01-08**: Basics (hello world, research, code review, debugging)
 - **09-12**: Agents and skills
@@ -241,8 +241,9 @@ The `../../examples/` directory contains 36 example programs:
 - **28**: Gas Town (multi-agent orchestration)
 - **29-31**: Captain's chair pattern (persistent orchestrator)
 - **33-36**: Production workflows (PR auto-fix, content pipeline, feature factory, bug hunter)
+- **37**: The Forge (build a browser from scratch)
 
-Start with `01-hello-world.prose` or try the impressive `33-pr-review-autofix.prose`.
+Start with `01-hello-world.prose` or try `37-the-forge.prose` to watch AI build a web browser.
 
 ## Execution
 
@@ -321,3 +322,67 @@ We started with YAML. The problem: loops, conditionals, and variable declaration
 > Why not LangChain/CrewAI/AutoGen?
 
 Those are orchestration libraries—they coordinate agents from outside. OpenProse runs inside the agent session—the session itself is the IoC container. This means zero external dependencies and portability across any AI assistant. Switch from Claude Code to Codex? Your .prose files still work.
+
+---
+
+## Migration (`prose update`)
+
+When a user invokes `prose update`, check for legacy file structures and migrate them to the current format.
+
+### Legacy Paths to Check
+
+| Legacy Path | Current Path | Notes |
+|-------------|--------------|-------|
+| `.prose/state.json` | `.prose/.env` | Convert JSON to key=value format |
+| `.prose/execution/` | `.prose/runs/` | Rename directory |
+
+### Migration Steps
+
+1. **Check for `.prose/state.json`**
+   - If exists, read the JSON content
+   - Convert to `.env` format:
+     ```json
+     {"OPENPROSE_TELEMETRY": "enabled", "USER_ID": "user-xxx", "SESSION_ID": "sess-xxx"}
+     ```
+     becomes:
+     ```env
+     OPENPROSE_TELEMETRY=enabled
+     USER_ID=user-xxx
+     SESSION_ID=sess-xxx
+     ```
+   - Write to `.prose/.env`
+   - Delete `.prose/state.json`
+
+2. **Check for `.prose/execution/`**
+   - If exists, rename to `.prose/runs/`
+   - The internal structure of run directories may also have changed; migration of individual run state is best-effort
+
+3. **Create `.prose/agents/` if missing**
+   - This is a new directory for project-scoped persistent agents
+
+### Migration Output
+
+```
+🔄 Migrating OpenProse workspace...
+  ✓ Converted .prose/state.json → .prose/.env
+  ✓ Renamed .prose/execution/ → .prose/runs/
+  ✓ Created .prose/agents/
+✅ Migration complete. Your workspace is up to date.
+```
+
+If no legacy files are found:
+```
+✅ Workspace already up to date. No migration needed.
+```
+
+### Skill File References (for maintainers)
+
+These documentation files were renamed in the skill itself (not user workspace):
+
+| Legacy Name | Current Name |
+|-------------|--------------|
+| `docs.md` | `compiler.md` |
+| `patterns.md` | `guidance/patterns.md` |
+| `antipatterns.md` | `guidance/antipatterns.md` |
+
+If you encounter references to the old names in user prompts or external docs, map them to the current paths.
