@@ -28,7 +28,6 @@ When a user invokes `prose <command>`, intelligently route based on intent:
 | `prose help` | Load `help.md`, guide user to what they need |
 | `prose run <file>` | Load VM (`prose.md` + state backend), execute the program |
 | `prose compile <file>` | Load `compiler.md`, validate the program |
-| `prose eval <program>` | Load `eval.md`, run the evaluation harness |
 | `prose update` | Run migration (see Migration section below) |
 | `prose examples` | Show or run example programs from `examples/` |
 | Other | Intelligently interpret based on context |

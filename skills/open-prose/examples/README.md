@@ -80,6 +80,76 @@ These examples demonstrate workflows using OpenProse's full feature set.
 | `30-captains-chair-simple.prose` | Minimal captain's chair: core pattern without complexity |
 | `31-captains-chair-with-memory.prose` | Captain's chair with retrospective analysis and session-to-session learning |
 
+### Production Workflows (33-38)
+
+| File | Description |
+|------|-------------|
+| `33-pr-review-autofix.prose` | Automated PR review with fix suggestions |
+| `34-content-pipeline.prose` | End-to-end content creation pipeline |
+| `35-feature-factory.prose` | Feature implementation automation |
+| `36-bug-hunter.prose` | Systematic bug detection and analysis |
+| `37-the-forge.prose` | Build a browser from scratch |
+| `38-skill-scan.prose` | Skill discovery and analysis |
+
+### Architecture Patterns (39)
+
+| File | Description |
+|------|-------------|
+| `39-architect-by-simulation.prose` | Design systems through simulated implementation phases with serial handoffs and persistent architect |
+
+### Recursive Language Models (40-43)
+
+| File | Description |
+|------|-------------|
+| `40-rlm-self-refine.prose` | Recursive refinement until quality threshold - the core RLM pattern |
+| `41-rlm-divide-conquer.prose` | Hierarchical chunking for inputs beyond context limits |
+| `42-rlm-filter-recurse.prose` | Filter-then-process for needle-in-haystack tasks |
+| `43-rlm-pairwise.prose` | O(n^2) pairwise aggregation for relationship mapping |
+
+## The Architect By Simulation Pattern
+
+The architect-by-simulation pattern is for designing systems by "implementing" them through reasoning. Instead of writing code, each phase produces specification documents that the next phase builds upon.
+
+**Key principles:**
+
+1. **Thinking/deduction framework**: "Implement" means reasoning through design decisions
+2. **Serial pipeline with handoffs**: Each phase reads previous phase's output
+3. **Persistent architect**: Maintains master plan and synthesizes learnings
+4. **User checkpoint**: Get plan approval BEFORE executing the pipeline
+5. **Simulation as implementation**: The spec IS the deliverable
+
+```prose
+# The core pattern
+agent architect:
+  model: opus
+  persist: true
+  prompt: "Design by simulating implementation"
+
+# Create master plan with phases
+let plan = session: architect
+  prompt: "Break feature into design phases"
+
+# User reviews the plan BEFORE the pipeline runs
+input user_approval: "User reviews plan and approves"
+
+# Execute phases serially with handoffs
+for phase_name, index in phases:
+  let handoff = session: phase-executor
+    prompt: "Execute phase {index}"
+    context: previous_handoffs
+
+  # Architect synthesizes after each phase
+  resume: architect
+    prompt: "Synthesize learnings from phase {index}"
+    context: handoff
+
+# Synthesize all handoffs into final spec
+output spec = session: architect
+  prompt: "Synthesize all handoffs into final spec"
+```
+
+See example 39 for the full implementation.
+
 ## The Captain's Chair Pattern
 
 The captain's chair is an orchestration paradigm where a coordinating agent (the "captain") dispatches specialized subagents for all execution. The captain never writes code directly—only plans, coordinates, and validates.
@@ -124,6 +194,51 @@ output result = session: captain
 ```
 
 See examples 29-31 for full implementations.
+
+## The Recursive Language Model Pattern
+
+Recursive Language Models (RLMs) are a paradigm for handling inputs far beyond context limits. The key insight: treat the prompt as an external environment that the LLM can symbolically interact with, chunk, and recursively process.
+
+**Why RLMs matter:**
+
+- Base LLMs degrade rapidly on long contexts ("context rot")
+- RLMs maintain performance on inputs 2 orders of magnitude beyond context limits
+- On quadratic-complexity tasks, base models get <0.1% while RLMs achieve 58%
+
+**Key patterns:**
+
+1. **Self-refinement**: Recursive improvement until quality threshold
+2. **Divide-and-conquer**: Chunk, process, aggregate recursively
+3. **Filter-then-recurse**: Cheap filtering before expensive deep dives
+4. **Pairwise aggregation**: Handle O(n²) tasks through batch decomposition
+
+```prose
+# The core RLM pattern: recursive block with scope isolation
+block process(data, depth):
+  # Base case
+  if **data is small** or depth <= 0:
+    output session "Process directly"
+      context: data
+
+  # Recursive case: chunk and fan out
+  let chunks = session "Split into logical chunks"
+    context: data
+
+  parallel for chunk in chunks:
+    do process(chunk, depth - 1)  # Recursive call
+
+  # Aggregate results (fan in)
+  output session "Synthesize partial results"
+```
+
+**OpenProse advantages for RLMs:**
+
+- **Scope isolation**: Each recursive call gets its own `execution_id`, preventing variable collisions
+- **Parallel fan-out**: `parallel for` enables concurrent processing at each recursion level
+- **State persistence**: SQLite/PostgreSQL backends track the full call tree
+- **Natural aggregation**: Pipelines (`| reduce`) and explicit context passing
+
+See examples 40-43 for full implementations.
 
 ## Running Examples
 
