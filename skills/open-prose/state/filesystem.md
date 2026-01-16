@@ -7,6 +7,8 @@ summary: |
 see-also:
   - ../prose.md: VM execution semantics
   - in-context.md: In-context state management (alternative approach)
+  - sqlite.md: SQLite state management (experimental)
+  - postgres.md: PostgreSQL state management (experimental)
   - ../primitives/session.md: Session context and compaction guidelines
 ---
 
@@ -37,7 +39,8 @@ File-based state persists all execution artifacts to disk. This enables:
 │       ├── program.prose             # Copy of running program
 │       ├── state.md                  # Execution state with code snippets
 │       ├── bindings/
-│       │   └── {name}.md             # All named values (input/output/let/const)
+│       │   ├── {name}.md             # Root scope bindings
+│       │   └── {name}__{execution_id}.md  # Scoped bindings (block invocations)
 │       ├── imports/
 │       │   └── {handle}--{slug}/     # Nested program executions (same structure recursively)
 │       └── agents/
@@ -150,16 +153,25 @@ resume: captain                              # [...next...]
 
 ### Bindings
 
-| Name | Kind | Path |
-|------|------|------|
-| research | let | bindings/research.md |
-| a | let | bindings/a.md |
+| Name | Kind | Path | Execution ID |
+|------|------|------|--------------|
+| research | let | bindings/research.md | (root) |
+| a | let | bindings/a.md | (root) |
+| result | let | bindings/result__43.md | 43 |
 
 ### Agents
 
 | Name | Scope | Path |
 |------|-------|------|
 | captain | execution | agents/captain/ |
+
+## Call Stack
+
+| execution_id | block | depth | status |
+|--------------|-------|-------|--------|
+| 43 | process | 3 | executing |
+| 42 | process | 2 | waiting |
+| 41 | process | 1 | waiting |
 ```
 
 **Status annotations:**
@@ -231,6 +243,57 @@ This ensures all session outputs are persisted and inspectable.
 
 ---
 
+### Scoped Bindings (Block Invocations)
+
+When a binding is created inside a block invocation, it's scoped to that execution frame to prevent collisions across recursive calls.
+
+**Naming convention:** `{name}__{execution_id}.md`
+
+Examples:
+- `bindings/result__43.md` — binding `result` in execution_id 43
+- `bindings/parts__44.md` — binding `parts` in execution_id 44
+
+**File format with execution scope:**
+
+```markdown
+# result
+
+kind: let
+execution_id: 43
+
+source:
+```prose
+let result = session "Process chunk"
+```
+
+---
+
+Processed chunk into 3 sub-parts...
+```
+
+**Scope resolution:** The VM resolves variable references by checking:
+1. `{name}__{current_execution_id}.md`
+2. `{name}__{parent_execution_id}.md`
+3. Continue up the call stack
+4. `{name}.md` (root scope)
+
+The first match wins.
+
+**Example directory for recursive calls:**
+
+```
+bindings/
+├── data.md              # Root scope input
+├── result__1.md         # First process() invocation
+├── parts__1.md          # Parts from first invocation
+├── result__2.md         # Recursive call (depth 2)
+├── parts__2.md          # Parts from depth 2
+├── result__3.md         # Recursive call (depth 3)
+└── ...
+```
+
+---
+
 ### Agent Memory Files
 
 #### `agents/{name}/memory.md`
@@ -285,7 +348,7 @@ prompt: "Review the research findings"
 | `agents/{name}/memory.md` | Persistent agent |
 | `agents/{name}/{name}-NNN.md` | Persistent agent |
 
-The VM orchestrates; subagents write their own outputs directly to the filesystem.
+The VM orchestrates; subagents write their own outputs directly to the filesystem. **The VM never holds full binding values—it tracks file paths.**
 
 ---
 
@@ -327,6 +390,27 @@ with your compacted state following the guidelines in primitives/session.md.
 Also write your segment record to:
   .prose/runs/20260115-143052-a7b3c9/agents/captain/captain-003.md
 ```
+
+### What Subagents Return to the VM
+
+After writing output, the subagent returns a **confirmation message**—not the full content:
+
+**Root scope (outside block invocations):**
+```
+Binding written: research
+Location: .prose/runs/20260115-143052-a7b3c9/bindings/research.md
+Summary: AI safety research covering alignment, robustness, and interpretability with 15 citations.
+```
+
+**Inside block invocation (include execution_id):**
+```
+Binding written: result
+Location: .prose/runs/20260115-143052-a7b3c9/bindings/result__43.md
+Execution ID: 43
+Summary: Processed chunk into 3 sub-parts for recursive processing.
+```
+
+The VM records the location and continues. It does NOT read the file—it passes the reference to subsequent sessions that need the context.
 
 ---
 

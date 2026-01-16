@@ -116,6 +116,25 @@ Subagents (sessions spawned by the VM) are responsible for:
 
 **Critical:** Subagents must write their outputs directly to the database. The VM does not write subagent outputs—it only reads them after the subagent completes.
 
+**What subagents return to the VM:** A confirmation message with the binding location—not the full content:
+
+**Root scope:**
+```
+Binding written: research
+Location: .prose/runs/20260116-143052-a7b3c9/state.db (bindings table, name='research', execution_id=NULL)
+Summary: AI safety research covering alignment, robustness, and interpretability with 15 citations.
+```
+
+**Inside block invocation:**
+```
+Binding written: result
+Location: .prose/runs/20260116-143052-a7b3c9/state.db (bindings table, name='result', execution_id=43)
+Execution ID: 43
+Summary: Processed chunk into 3 sub-parts for recursive processing.
+```
+
+The VM tracks locations, not values. This keeps the VM's context lean and enables arbitrarily large intermediate values.
+
 ### Shared Concerns
 
 | Concern | Who Handles |
@@ -158,13 +177,15 @@ CREATE TABLE IF NOT EXISTS execution (
 
 -- All named values (input, output, let, const)
 CREATE TABLE IF NOT EXISTS bindings (
-    name TEXT PRIMARY KEY,
+    name TEXT,
+    execution_id INTEGER,  -- NULL for root scope, non-null for block invocations
     kind TEXT,  -- input, output, let, const
     value TEXT,
     source_statement TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-    attachment_path TEXT  -- if value is too large, store path to file
+    attachment_path TEXT,  -- if value is too large, store path to file
+    PRIMARY KEY (name, IFNULL(execution_id, -1))  -- IFNULL handles NULL for root scope
 );
 
 -- Persistent agent memory
@@ -205,6 +226,43 @@ CREATE TABLE IF NOT EXISTS imports (
 - **Extension tables**: Prefix with `x_` (e.g., `x_metrics`, `x_audit_log`)
 - **Anonymous bindings**: Sessions without explicit capture (`session "..."` without `let x =`) use auto-generated names: `anon_001`, `anon_002`, etc.
 - **Import bindings**: Prefix with import alias for scoping: `research.findings`, `research.sources`
+- **Scoped bindings**: Use `execution_id` column—NULL for root scope, non-null for block invocations
+
+### Scope Resolution Query
+
+For recursive blocks, bindings are scoped to their execution frame. Resolve variables by walking up the call stack:
+
+```sql
+-- Find binding 'result' starting from execution_id 43
+WITH RECURSIVE scope_chain AS (
+  -- Start with current execution
+  SELECT id, parent_id FROM execution WHERE id = 43
+  UNION ALL
+  -- Walk up to parent
+  SELECT e.id, e.parent_id
+  FROM execution e
+  JOIN scope_chain s ON e.id = s.parent_id
+)
+SELECT b.* FROM bindings b
+LEFT JOIN scope_chain s ON b.execution_id = s.id
+WHERE b.name = 'result'
+  AND (b.execution_id IN (SELECT id FROM scope_chain) OR b.execution_id IS NULL)
+ORDER BY
+  CASE WHEN b.execution_id IS NULL THEN 1 ELSE 0 END,  -- Prefer scoped over root
+  s.id DESC NULLS LAST  -- Prefer deeper (more local) scope
+LIMIT 1;
+```
+
+**Simpler version if you know the scope chain:**
+
+```sql
+-- Direct lookup: check current scope, then parent, then root
+SELECT * FROM bindings
+WHERE name = 'result'
+  AND (execution_id = 43 OR execution_id = 42 OR execution_id IS NULL)
+ORDER BY execution_id DESC NULLS LAST
+LIMIT 1;
+```
 
 ---
 
@@ -240,6 +298,8 @@ sqlite3 .prose/runs/20260116-143052-a7b3c9/state.db "
 
 The VM provides the database path and instructions when spawning:
 
+**Root scope (outside block invocations):**
+
 ```
 Your output database is:
   .prose/runs/20260116-143052-a7b3c9/state.db
@@ -247,12 +307,39 @@ Your output database is:
 When complete, write your output:
 
 sqlite3 .prose/runs/20260116-143052-a7b3c9/state.db "
-  INSERT OR REPLACE INTO bindings (name, kind, value, source_statement, updated_at)
+  INSERT OR REPLACE INTO bindings (name, execution_id, kind, value, source_statement, updated_at)
   VALUES (
     'research',
+    NULL,  -- root scope
     'let',
     'AI safety research covers alignment, robustness...',
     'let research = session: researcher',
+    datetime('now')
+  )
+"
+```
+
+**Inside block invocation (include execution_id):**
+
+```
+Execution scope:
+  execution_id: 43
+  block: process
+  depth: 3
+
+Your output database is:
+  .prose/runs/20260116-143052-a7b3c9/state.db
+
+When complete, write your output:
+
+sqlite3 .prose/runs/20260116-143052-a7b3c9/state.db "
+  INSERT OR REPLACE INTO bindings (name, execution_id, kind, value, source_statement, updated_at)
+  VALUES (
+    'result',
+    43,  -- scoped to this execution
+    'let',
+    'Processed chunk into 3 sub-parts...',
+    'let result = session \"Process chunk\"',
     datetime('now')
   )
 "

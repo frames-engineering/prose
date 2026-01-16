@@ -28,6 +28,7 @@ When a user invokes `prose <command>`, intelligently route based on intent:
 | `prose help` | Load `help.md`, guide user to what they need |
 | `prose run <file>` | Load VM (`prose.md` + state backend), execute the program |
 | `prose compile <file>` | Load `compiler.md`, validate the program |
+| `prose eval <program>` | Load `eval.md`, run the evaluation harness |
 | `prose update` | Run migration (see Migration section below) |
 | `prose examples` | Show or run example programs from `examples/` |
 | Other | Intelligently interpret based on context |
@@ -68,6 +69,7 @@ There is only ONE skill: `open-prose`. There are NO separate skills like `prose-
 | `state/filesystem.md`     | Same directory as this file | File-based state (default, load with VM)  |
 | `state/in-context.md`     | Same directory as this file | In-context state (on request)             |
 | `state/sqlite.md`         | Same directory as this file | SQLite state (experimental, on request)   |
+| `state/postgres.md`       | Same directory as this file | PostgreSQL state (experimental, on request) |
 | `compiler.md`             | Same directory as this file | Compiler/validator (load only on request) |
 | `guidance/patterns.md`    | Same directory as this file | Best practices (load when writing .prose) |
 | `guidance/antipatterns.md`| Same directory as this file | What to avoid (load when writing .prose)  |
@@ -150,6 +152,7 @@ For `poll` events, include `question`, `options`, and `selected`.
 | `state/filesystem.md` | File-based state     | Load with VM (default)                         |
 | `state/in-context.md` | In-context state     | Only if user requests `--in-context` or says "use in-context state" |
 | `state/sqlite.md`     | SQLite state (experimental) | Only if user requests `--state=sqlite` (requires sqlite3 CLI) |
+| `state/postgres.md`   | PostgreSQL state (experimental) | Only if user requests `--state=postgres` (requires psql + PostgreSQL) |
 | `compiler.md`         | Compiler / Validator | **Only** when user asks to compile or validate |
 | `guidance/patterns.md` | Best practices      | Load when **writing** new .prose files         |
 | `guidance/antipatterns.md` | What to avoid  | Load when **writing** new .prose files         |
@@ -171,12 +174,51 @@ OpenProse supports three state management approaches:
 | **filesystem** (default) | Complex programs, resumption needed, debugging | `.prose/runs/{id}/` files |
 | **in-context** | Simple programs (<30 statements), no persistence needed | Conversation history |
 | **sqlite** (experimental) | Queryable state, atomic transactions, flexible schema | `.prose/runs/{id}/state.db` |
+| **postgres** (experimental) | True concurrent writes, external integrations, team collaboration | PostgreSQL database |
 
 **Default behavior:** When loading `prose.md`, also load `state/filesystem.md`. This is the recommended mode for most programs.
 
 **Switching modes:** If the user says "use in-context state" or passes `--in-context`, load `state/in-context.md` instead.
 
 **Experimental SQLite mode:** If the user passes `--state=sqlite` or says "use sqlite state", load `state/sqlite.md`. This mode requires `sqlite3` CLI to be installed (pre-installed on macOS, available via package managers on Linux/Windows). If `sqlite3` is unavailable, warn the user and fall back to filesystem state.
+
+**Experimental PostgreSQL mode:** If the user passes `--state=postgres` or says "use postgres state":
+
+**⚠️ Security Note:** Database credentials in `OPENPROSE_POSTGRES_URL` are passed to subagent sessions and visible in logs. Advise users to use a dedicated database with limited-privilege credentials. See `state/postgres.md` for secure setup guidance.
+
+1. **Check for connection configuration first:**
+   ```bash
+   # Check .prose/.env for OPENPROSE_POSTGRES_URL
+   cat .prose/.env 2>/dev/null | grep OPENPROSE_POSTGRES_URL
+   # Or check environment variable
+   echo $OPENPROSE_POSTGRES_URL
+   ```
+
+2. **If connection string exists, verify connectivity:**
+   ```bash
+   psql "$OPENPROSE_POSTGRES_URL" -c "SELECT 1" 2>&1
+   ```
+
+3. **If not configured or connection fails, advise the user:**
+   ```
+   ⚠️  PostgreSQL state requires a connection URL.
+
+   To configure:
+   1. Set up a PostgreSQL database (Docker, local, or cloud)
+   2. Add connection string to .prose/.env:
+
+      echo "OPENPROSE_POSTGRES_URL=postgresql://user:pass@localhost:5432/prose" >> .prose/.env
+
+   Quick Docker setup:
+      docker run -d --name prose-pg -e POSTGRES_DB=prose -e POSTGRES_HOST_AUTH_METHOD=trust -p 5432:5432 postgres:16
+      echo "OPENPROSE_POSTGRES_URL=postgresql://postgres@localhost:5432/prose" >> .prose/.env
+
+   See state/postgres.md for detailed setup options.
+   ```
+
+4. **Only after successful connection check, load `state/postgres.md`**
+
+This mode requires both `psql` CLI and a running PostgreSQL server. If either is unavailable, warn and offer fallback to filesystem state.
 
 **Context warning:** `compiler.md` is large. Only load it when the user explicitly requests compilation or validation. After compiling, recommend `/compact` or a new session before running—don't keep both docs in context.
 

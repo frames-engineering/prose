@@ -9,6 +9,8 @@ see-also:
   - ../compiler.md: Full language specification
   - ../state/filesystem.md: File-system state management (default)
   - ../state/in-context.md: In-context state management (on request)
+  - ../state/sqlite.md: SQLite state management (experimental)
+  - ../state/postgres.md: PostgreSQL state management (experimental)
 ---
 
 # Session Context Management
@@ -82,11 +84,57 @@ When context feels overwhelming, process in this order:
 3. **Focus on task context** → What am I doing right now?
 4. **Synthesize** → How does my prior knowledge inform this task?
 
+### 1.5 Execution Scope (Block Invocations)
+
+If you're running inside a block invocation, you'll receive execution scope information:
+
+```
+Execution scope:
+  execution_id: 43
+  block: process
+  depth: 3
+  parent_execution_id: 42
+```
+
+**What this tells you:**
+
+| Field | Meaning |
+|-------|---------|
+| `execution_id` | Unique ID for this specific block invocation |
+| `block` | Name of the block you're executing within |
+| `depth` | How deep in the call stack (1 = first level) |
+| `parent_execution_id` | The invoking frame's ID (for scope chain) |
+
+**How to use it:**
+
+1. **Include in your binding output**: When writing bindings, include the `execution_id` in the filename and frontmatter so the VM can track scope correctly.
+
+2. **Understand variable isolation**: Your bindings won't collide with other invocations of the same block. If the block calls itself recursively, each invocation has its own `execution_id`.
+
+3. **Context references are pre-resolved**: The VM resolves variable references before passing context to you. You don't need to walk the scope chain—the VM already did.
+
+**Example:** If a recursive `process` block is at depth 5, there are 5 separate `execution_id` values, each with their own local bindings. Your session only sees the current frame's context.
+
 ---
 
 ## 2. Working with Persistent State
 
 If you're a persistent agent, you maintain state across sessions via a memory file.
+
+### Two Distinct Outputs
+
+Persistent agents have **two separate outputs** that must not be confused:
+
+| Output | What It Is | Where It Goes | Purpose |
+|--------|------------|---------------|---------|
+| **Binding** | The result of THIS task | `bindings/{name}.md` or database | Passed to other sessions via `context:` |
+| **Memory** | Your accumulated knowledge | `agents/{name}/memory.md` or database | Carried forward to YOUR future invocations |
+
+**The binding is task-specific.** If you're asked to "review the plan," the binding contains your review.
+
+**The memory is agent-specific.** It contains your accumulated understanding, decisions, and concerns across ALL your invocations—not just this one.
+
+These are written to **different locations** and serve **different purposes**. Always write both.
 
 ### 2.1 Reading Your Memory
 
@@ -302,12 +350,15 @@ For regular sessions with output capture (`let x = session "..."`), write to the
 
 **Path format:** `.prose/runs/{run-id}/bindings/{name}.md`
 
+**Path format (inside block invocation):** `.prose/runs/{run-id}/bindings/{name}__{execution_id}.md`
+
 **File format:**
 
 ````markdown
 # {name}
 
 kind: {let|const|output|input}
+execution_id: {id}  # Include if inside a block invocation (omit for root scope)
 
 source:
 
@@ -432,15 +483,105 @@ Before completing your session:
 
 ---
 
+## 7. Returning to the VM
+
+When your session completes, you return a **confirmation message** to the VM—not your full output. The VM tracks pointers, not values.
+
+### 7.1 What to Return
+
+Your return message should include:
+
+```
+Binding written: {name}
+Location: {path or database coordinates}
+Summary: {1-2 sentence summary of what's in the binding}
+```
+
+**Example (filesystem state, root scope):**
+```
+Binding written: research
+Location: .prose/runs/20260116-143052-a7b3c9/bindings/research.md
+Summary: Comprehensive AI safety research covering alignment, robustness, and interpretability with 15 key paper citations.
+```
+
+**Example (filesystem state, inside block invocation):**
+```
+Binding written: result
+Location: .prose/runs/20260116-143052-a7b3c9/bindings/result__43.md
+Execution ID: 43
+Summary: Processed chunk into 3 sub-parts for recursive processing.
+```
+
+**Example (PostgreSQL state):**
+```
+Binding written: research
+Location: openprose.bindings WHERE name='research' AND run_id='20260116-143052-a7b3c9'
+Summary: Comprehensive AI safety research covering alignment, robustness, and interpretability with 15 key paper citations.
+```
+
+**Example (PostgreSQL state, inside block invocation):**
+```
+Binding written: result
+Location: openprose.bindings WHERE name='result' AND run_id='20260116-143052-a7b3c9' AND execution_id=43
+Execution ID: 43
+Summary: Processed chunk into 3 sub-parts for recursive processing.
+```
+
+### 7.2 Why Pointers, Not Values
+
+The VM never holds full binding values in its working memory. This is intentional:
+
+1. **Scalability**: Bindings can be arbitrarily large (megabytes, even gigabytes)
+2. **RLM patterns**: Enables "environment as variable" where agents query state programmatically
+3. **Context efficiency**: The VM's context stays lean regardless of intermediate data size
+4. **Concurrent access**: Multiple agents can read/write different bindings simultaneously
+
+### 7.3 What NOT to Return
+
+Do NOT return your full output in the Task tool response. The VM will ignore it.
+
+**Bad:**
+```
+Here's my research:
+
+AI safety is a field that studies how to create artificial intelligence systems that are beneficial and avoid harmful outcomes. The field encompasses several key areas...
+[5000 more words]
+```
+
+**Good:**
+```
+Binding written: research
+Location: .prose/runs/20260116-143052-a7b3c9/bindings/research.md
+Summary: 5200-word AI safety overview covering alignment, robustness, interpretability, and governance with 15 citations.
+```
+
+### 7.4 For Persistent Agents
+
+If you're a persistent agent (invoked with `resume:`), also confirm your memory update:
+
+```
+Binding written: analysis
+Location: .prose/runs/20260116-143052-a7b3c9/bindings/analysis.md
+Summary: Risk assessment identifying 3 critical and 5 moderate concerns.
+
+Memory updated: captain
+Location: .prose/runs/20260116-143052-a7b3c9/agents/captain/memory.md
+Segment: captain-003.md
+```
+
+---
+
 ## Summary
 
 As a subagent in an OpenProse program:
 
 1. **Understand your context layers** — outer state, memory, task context
-2. **Build on your memory** — you have continuity, use it
-3. **Compact, don't summarize** — preserve specifics, drop reasoning chains
-4. **Signal clearly** — help the VM understand your decisions
-5. **Test your compaction** — would future-you understand exactly what happened?
-6. **Write output files** — when in file-based mode, write to the paths you're given
+2. **Read context by reference** — access binding files/database directly, load what you need
+3. **Build on your memory** — you have continuity, use it
+4. **Compact, don't summarize** — preserve specifics, drop reasoning chains
+5. **Signal clearly** — help the VM understand your decisions
+6. **Test your compaction** — would future-you understand exactly what happened?
+7. **Write outputs directly** — persist to the binding location you're given
+8. **Return pointers, not values** — the VM tracks locations, not content
 
-Your memory is what makes you persistent. Treat it as carefully as you'd treat any important document—because future-you depends on it.
+Your memory is what makes you persistent. The VM's efficiency depends on you writing outputs and returning confirmations—not dumping full content back through the substrate.

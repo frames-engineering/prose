@@ -7,6 +7,8 @@ summary: |
 see-also:
   - ../prose.md: VM execution semantics
   - filesystem.md: File-system state management (alternative approach)
+  - sqlite.md: SQLite state management (experimental)
+  - postgres.md: PostgreSQL state management (experimental)
   - ../primitives/session.md: Session context and compaction guidelines
 ---
 
@@ -62,6 +64,8 @@ Use text-prefixed markers for each state change:
 | [Pipeline] | Pipeline | Stage progress |
 | [Try] | Error handling | Try/catch/finally |
 | [Flow] | Flow | Condition evaluation results |
+| [Frame+] | Call Stack | Push new frame (block invocation) |
+| [Frame-] | Call Stack | Pop frame (block completion) |
 
 ---
 
@@ -145,6 +149,62 @@ Use text-prefixed markers for each state change:
 [Output] output sources = ["arxiv:2401.1234", ...] (will return to caller)
 ```
 
+### Block Invocation and Call Stack
+
+Track block invocations with frame markers:
+
+```
+[Position] do process(data, 5)
+[Frame+] Entering block: process (execution_id: 1, depth: 1)
+   Arguments: chunk=data, depth=5
+
+   [Position] session "Split into parts"
+      [Task tool call]
+   [Success] Session complete
+   [Binding] let parts = <result> (execution_id: 1)
+
+   [Position] do process(parts[0], 4)
+   [Frame+] Entering block: process (execution_id: 2, depth: 2)
+      Arguments: chunk=parts[0], depth=4
+      Parent: execution_id 1
+
+      [Position] session "Split into parts"
+         [Task tool call]
+      [Success] Session complete
+      [Binding] let parts = <result> (execution_id: 2)  # Shadows parent's 'parts'
+
+      ... (continues recursively)
+
+   [Frame-] Exiting block: process (execution_id: 2)
+
+   [Position] session "Combine results"
+      [Task tool call]
+   [Success] Session complete
+
+[Frame-] Exiting block: process (execution_id: 1)
+```
+
+**Key points:**
+- Each `[Frame+]` must have a matching `[Frame-]`
+- `execution_id` uniquely identifies each invocation
+- `depth` shows call stack depth (1 = first level)
+- Bindings include `(execution_id: N)` to indicate scope
+- Nested frames show `Parent: execution_id N` for the scope chain
+
+### Scoped Binding Narration
+
+When inside a block invocation, always include the execution_id:
+
+```
+[Binding] let result = "computed value" (execution_id: 43)
+```
+
+For variable resolution across scopes:
+
+```
+[Binding] Resolving 'config': found in execution_id 41 (parent scope)
+```
+
 ### Program Imports
 
 ```
@@ -172,6 +232,8 @@ Use text-prefixed markers for each state change:
 
 ## Context Serialization
 
+**In-context state passes values, not references.** This is the key difference from file-based and PostgreSQL state. The VM holds binding values directly in conversation history.
+
 When passing context to sessions, format appropriately:
 
 | Context Size | Strategy |
@@ -188,6 +250,8 @@ research: "Key findings about AI safety..."
 analysis: "Risk assessment shows..."
 ---
 ```
+
+**Limitation:** In-context state cannot support RLM-style "environment as variable" patterns where agents query arbitrarily large bindings. For programs with large intermediate values, use file-based or PostgreSQL state instead.
 
 ---
 
@@ -265,13 +329,30 @@ The VM must track these state categories in narration:
 | **Block Registry** | All block definitions (hoisted) | `review: {params: [topic], body: [...]}` |
 | **Input Bindings** | Inputs received from caller | `topic = "quantum computing"` |
 | **Output Bindings** | Outputs to return to caller | `findings = "Research shows..."` |
-| **Variable Bindings** | Name -> value mapping | `research = "AI safety covers..."` |
+| **Variable Bindings** | Name -> value mapping (with execution_id) | `result = "..." (execution_id: 3)` |
 | **Variable Mutability** | Which are `let` vs `const` vs `output` | `research: let, findings: output` |
 | **Execution Position** | Current statement index | Statement 3 of 7 |
 | **Loop State** | Counter, max, condition | Iteration 2 of max 5 |
 | **Parallel State** | Branches, results, strategy | `{a: complete, b: pending}` |
 | **Error State** | Exception, retry count | Retry 2 of 3, error: "timeout" |
-| **Call Stack** | Nested block/program invocations | `[main, @alice/research, inner-loop]` |
+| **Call Stack** | Stack of execution frames | See below |
+
+### Call Stack State
+
+For block invocations, track the full call stack:
+
+```
+[CallStack] Current stack (depth: 3):
+   execution_id: 5 | block: process | depth: 3 | status: executing
+   execution_id: 3 | block: process | depth: 2 | status: waiting
+   execution_id: 1 | block: process | depth: 1 | status: waiting
+```
+
+Each frame tracks:
+- `execution_id`: Unique ID for this invocation
+- `block`: Name of the block
+- `depth`: Position in call stack
+- `status`: executing, waiting, or completed
 
 ---
 

@@ -9,6 +9,8 @@ see-also:
   - compiler.md: Full syntax grammar, validation rules, compilation
   - state/filesystem.md: File-system state management (default)
   - state/in-context.md: In-context state management (on request)
+  - state/sqlite.md: SQLite state management (experimental)
+  - state/postgres.md: PostgreSQL state management (experimental)
   - primitives/session.md: Session context and compaction guidelines
 ---
 
@@ -184,6 +186,35 @@ let research = session: researcher
 [Your output here]
 ```
 
+**When inside a block invocation**, include execution scope:
+
+```
+Execution scope:
+  execution_id: 43
+  block: process
+  depth: 3
+
+Write your output to:
+  .prose/runs/20260115-143052-a7b3c9/bindings/result__43.md
+
+Format:
+# result
+
+kind: let
+execution_id: 43
+
+source:
+```prose
+let result = session "Process chunk"
+```
+
+---
+
+[Your output here]
+```
+
+The `__43` suffix scopes the binding to execution_id 43, preventing collisions with other invocations of the same block.
+
 For persistent agents with `resume:`:
 
 ```
@@ -194,17 +225,36 @@ Read it first to understand your prior context. When done, update it
 with your compacted state following the guidelines in primitives/session.md.
 ```
 
-The agent:
+The subagent:
 1. Reads its memory file (for `resume:`)
-2. Processes the task with memory + task context
-3. Writes updated memory directly to the file
-4. Writes any output bindings to their paths
+2. Reads any context bindings it needs from storage
+3. Processes the task
+4. Writes its output directly to the binding location
+5. Returns a **confirmation message** to the VM (not the full output)
+
+**What the subagent returns to the VM (via Task tool):**
+```
+Binding written: research
+Location: .prose/runs/20260115-143052-a7b3c9/bindings/research.md
+Summary: AI safety research covering alignment, robustness, and interpretability
+```
+
+**When inside a block invocation**, include execution_id:
+```
+Binding written: result
+Location: .prose/runs/20260115-143052-a7b3c9/bindings/result__43.md
+Execution ID: 43
+Summary: Processed chunk into 3 parts
+```
 
 The VM:
-1. Confirms files were written
-2. Updates `state.md` with new position/status
-3. Continues execution
-4. Does NOT do compaction—the agent did it
+1. Receives the confirmation (pointer + summary, not full value)
+2. Records the binding location in its state
+3. Updates `state.md` with new position/status
+4. Continues execution
+5. Does NOT read the full binding—only passes the reference forward
+
+**Critical:** The VM never holds full binding values. It tracks locations and passes references. This keeps the VM's context lean and enables arbitrarily large intermediate values.
 
 ---
 
@@ -521,20 +571,32 @@ session "Write summary"
 
 ### How Context is Passed
 
+The VM passes context **by reference**, not by value. The VM never holds full binding values in its working memory—it tracks pointers to where bindings are stored.
+
 When spawning a session with context:
-1. Include the referenced variable values in the prompt
-2. Format appropriately (summarize if needed)
-3. The subagent receives this as additional information
+1. Pass the **binding location** (file path or database coordinates)
+2. The subagent reads what it needs directly from storage
+3. The subagent decides how much to load based on its task
 
-Example execution:
+**For filesystem state:**
 ```
-// research = "Quantum computing uses qubits..."
+Context (by reference):
+- research: .prose/runs/20260116-143052-a7b3c9/bindings/research.md
+- analysis: .prose/runs/20260116-143052-a7b3c9/bindings/analysis.md
 
-Task({
-  prompt: "Write summary\n\nContext:\nresearch: Quantum computing uses qubits...",
-  ...
-})
+Read these files to access the content. For large bindings, read selectively.
 ```
+
+**For PostgreSQL state:**
+```
+Context (by reference):
+- research: openprose.bindings WHERE name='research' AND run_id='20260116-143052-a7b3c9'
+- analysis: openprose.bindings WHERE name='analysis' AND run_id='20260116-143052-a7b3c9'
+
+Query the database to access the content.
+```
+
+**Why reference-based:** This enables RLM-style patterns where the environment holds arbitrarily large values and agents interact with them programmatically, without the VM becoming a bottleneck.
 
 ---
 
@@ -785,9 +847,119 @@ Blocks are hoisted - can be used before definition.
 do review("quantum computing")
 ```
 
-1. Substitute arguments for parameters
-2. Execute block body
-3. Return to caller
+1. Push new frame onto call stack
+2. Bind arguments to parameters (scoped to this frame)
+3. Execute block body
+4. Pop frame from call stack
+5. Return to caller
+
+---
+
+## Call Stack Management
+
+The VM maintains a call stack for block invocations. Each frame represents one invocation, enabling recursion with proper scope isolation.
+
+### Stack Frame Structure
+
+| Field | Description |
+|-------|-------------|
+| `execution_id` | Unique ID for this invocation (monotonic counter) |
+| `block_name` | Name of the block being executed |
+| `arguments` | Bound parameter values |
+| `local_bindings` | Variables bound within this invocation |
+| `return_position` | Statement index to resume after block completes |
+| `depth` | Current recursion depth (stack length) |
+
+### Execution ID Generation
+
+Each block invocation gets a unique `execution_id`:
+- Start at 1 for the first block invocation in a run
+- Increment for each subsequent invocation
+- Never reuse within a run
+- Root scope (outside any block) has `execution_id: 0` (conceptually)
+
+**Storage representation:** State backends may represent root scope differently—databases use `NULL`, filesystem uses no suffix. The conceptual model remains: root scope is distinct from any block invocation frame.
+
+### Recursive Block Invocation
+
+Blocks can call themselves by name:
+
+```prose
+block process(chunk, depth):
+  if depth <= 0:
+    session "Handle directly"
+      context: chunk
+  else:
+    let parts = session "Split into parts"
+      context: chunk
+    for part in parts:
+      do process(part, depth - 1)  # Recursive call
+    session "Combine results"
+      context: parts
+
+do process(data, 5)
+```
+
+**Execution flow:**
+1. VM encounters `do process(data, 5)`
+2. VM pushes frame: `{execution_id: 1, block: "process", args: [data, 5], depth: 1}`
+3. VM executes block body, spawns "Split into parts" session
+4. VM encounters recursive `do process(part, depth - 1)`
+5. VM pushes frame: `{execution_id: 2, block: "process", args: [part, 4], depth: 2}`
+6. Recursion continues until base case
+7. Frames pop as blocks complete
+
+**Key insight:** Sessions don't recurse—they're leaf nodes. The VM manages the entire call tree.
+
+### Scope Resolution
+
+When resolving a variable name:
+1. Check current frame's `local_bindings`
+2. Check parent frame's `local_bindings` (lexical scope)
+3. Continue up the call stack to root
+4. Check global scope (imports, agents, blocks)
+5. Error if not found
+
+```
+do process(chunk, 5)           # execution_id: 1
+  let parts = ...              # parts bound in execution_id: 1
+  do process(parts[0], 4)      # execution_id: 2
+    let parts = ...            # NEW parts bound in execution_id: 2 (shadows parent)
+    # Accessing 'chunk' resolves to execution_id: 2's argument
+```
+
+**Only local bindings are scoped.** Global definitions (agents, blocks, imports) are shared across all frames.
+
+### Recursion Depth Limits
+
+Default maximum depth: **100**
+
+Configure per-block:
+```prose
+block process(chunk, depth) (max_depth: 50):
+  ...
+```
+
+If limit exceeded:
+```
+[Error] RecursionLimitExceeded: block 'process' exceeded max_depth 50
+```
+
+### Call Stack in State
+
+The VM tracks the call stack in its state. For filesystem state, this appears in `state.md`:
+
+```markdown
+## Call Stack
+
+| execution_id | block | depth | status |
+|--------------|-------|-------|--------|
+| 3 | process | 3 | executing |
+| 2 | process | 2 | waiting |
+| 1 | process | 1 | waiting |
+```
+
+For in-context state, use `[Frame+]` and `[Frame-]` markers (see `state/in-context.md`).
 
 ---
 

@@ -200,6 +200,7 @@ The VM maps traditional components to emergent structures:
 | `state/filesystem.md` | File-based state (default) | Load with VM |
 | `state/in-context.md` | In-context state | For simple programs (<30 statements) |
 | `state/sqlite.md` | SQLite state (experimental) | On request with `--state=sqlite` |
+| `state/postgres.md` | PostgreSQL state (experimental) | On request with `--state=postgres` |
 
 ### Experimental: SQLite State
 
@@ -210,6 +211,35 @@ Run with `--state=sqlite` for queryable, transaction-safe state management. Requ
 | macOS | Pre-installed |
 | Linux | `apt install sqlite3` or equivalent |
 | Windows | `winget install SQLite.SQLite` |
+
+### Experimental: PostgreSQL State
+
+Run with `--state=postgres` for true concurrent writes, network access, and external system integration.
+
+**⚠️ Bring Your Own Database:** You are responsible for providing and managing your PostgreSQL instance. OpenProse does not provision databases for you.
+
+**⚠️ Security Warning:** Database credentials in `OPENPROSE_POSTGRES_URL` are passed to subagent sessions and will be visible in agent context/logs. **Treat these credentials as non-sensitive.** Use:
+- A dedicated database for OpenProse (not your production DB)
+- A user with minimal privileges (just the `openprose` schema)
+- Credentials you're comfortable being logged
+
+**Setup:**
+
+| Platform | Setup |
+|----------|-------|
+| macOS | `brew install postgresql@16` + `brew services start postgresql@16` |
+| Linux | `apt install postgresql` |
+| Windows | PostgreSQL installer or Docker |
+| Cloud | Neon, Supabase, Railway, etc. |
+| Docker | `docker run -d --name prose-pg -e POSTGRES_DB=prose -e POSTGRES_HOST_AUTH_METHOD=trust -p 5432:5432 postgres:16` |
+
+**Configure connection:**
+```bash
+mkdir -p .prose
+echo "OPENPROSE_POSTGRES_URL=postgresql://user:pass@localhost:5432/prose" >> .prose/.env
+```
+
+PostgreSQL state is for power users who need concurrent parallel writes or external dashboard integration.
 
 ## FAQ
 
