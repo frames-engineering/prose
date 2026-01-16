@@ -29,7 +29,7 @@ When a user invokes `prose <command>`, intelligently route based on intent:
 | `prose run <file>` | Load VM (`prose.md` + state backend), execute the program |
 | `prose compile <file>` | Load `compiler.md`, validate the program |
 | `prose update` | Run migration (see Migration section below) |
-| `prose examples` | Show or run example programs from `../../examples/` |
+| `prose examples` | Show or run example programs from `examples/` |
 | Other | Intelligently interpret based on context |
 
 ### Important: Single Skill
@@ -38,30 +38,22 @@ There is only ONE skill: `open-prose`. There are NO separate skills like `prose-
 
 ### Resolving Example References
 
-**Examples are bundled with this skill.** When users reference examples by name (e.g., "run the gastown example"), find them relative to this SKILL.md file:
+**Examples are bundled in `examples/` (same directory as this file).** When users reference examples by name (e.g., "run the gastown example"):
 
-1. **How to find examples**: From the directory containing this SKILL.md, go up two levels (`../../`) then into `examples/`
-2. **Practical approach**: When you read this SKILL.md, note its path. The examples are at `{skill_dir}/../../examples/` where `{skill_dir}` contains this file.
-3. **Naming format**: `NN-kebab-case-name.prose` (e.g., `28-gas-town.prose`)
-
-**Resolution strategy:**
-- Match partial names: "gastown" → `28-gas-town.prose`
-- Match keywords: "forge" → `37-the-forge.prose`
-- Match numbers: "example 28" → `28-gas-town.prose`
-- If ambiguous, list matches and ask user to choose
+1. Read `examples/` to list available files
+2. Match by partial name, keyword, or number
+3. Run with: `prose run examples/28-gas-town.prose`
 
 **Common examples by keyword:**
 | Keyword | File |
 |---------|------|
-| hello, hello world | `01-hello-world.prose` |
-| gas town, gastown | `28-gas-town.prose` |
-| captain, chair | `29-captains-chair.prose` |
-| forge, browser | `37-the-forge.prose` |
-| parallel | `16-parallel-reviews.prose` |
-| pipeline | `21-pipeline-operations.prose` |
-| error, retry | `22-error-handling.prose` |
-
-**Example**: If this SKILL.md is at `/Users/x/.claude/plugins/cache/prose/open-prose/0.4.3/skills/open-prose/SKILL.md`, then examples are at `/Users/x/.claude/plugins/cache/prose/open-prose/0.4.3/examples/`.
+| hello, hello world | `examples/01-hello-world.prose` |
+| gas town, gastown | `examples/28-gas-town.prose` |
+| captain, chair | `examples/29-captains-chair.prose` |
+| forge, browser | `examples/37-the-forge.prose` |
+| parallel | `examples/16-parallel-reviews.prose` |
+| pipeline | `examples/21-pipeline-operations.prose` |
+| error, retry | `examples/22-error-handling.prose` |
 
 ---
 
@@ -79,7 +71,7 @@ There is only ONE skill: `open-prose`. There are NO separate skills like `prose-
 | `compiler.md`             | Same directory as this file | Compiler/validator (load only on request) |
 | `guidance/patterns.md`    | Same directory as this file | Best practices (load when writing .prose) |
 | `guidance/antipatterns.md`| Same directory as this file | What to avoid (load when writing .prose)  |
-| `../../examples/`         | Root of prose repo          | 37 example programs                       |
+| `examples/`               | Same directory as this file | 37 example programs                       |
 
 **User workspace files** (these ARE in the user's project):
 
@@ -274,7 +266,7 @@ OpenProse supports three state management approaches:
 
 ## Examples
 
-The `../../examples/` directory contains 37 example programs:
+The `examples/` directory contains 37 example programs:
 
 - **01-08**: Basics (hello world, research, code review, debugging)
 - **09-12**: Agents and skills
