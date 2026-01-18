@@ -27,6 +27,7 @@ When a user invokes `prose <command>`, intelligently route based on intent:
 |---------|--------|
 | `prose help` | Load `help.md`, guide user to what they need |
 | `prose run <file>` | Load VM (`prose.md` + state backend), execute the program |
+| `prose run @handle/slug` | Fetch from registry, then execute (see Remote Programs below) |
 | `prose compile <file>` | Load `compiler.md`, validate the program |
 | `prose update` | Run migration (see Migration section below) |
 | `prose examples` | Show or run example programs from `examples/` |
@@ -54,6 +55,40 @@ There is only ONE skill: `open-prose`. There are NO separate skills like `prose-
 | parallel | `examples/16-parallel-reviews.prose` |
 | pipeline | `examples/21-pipeline-operations.prose` |
 | error, retry | `examples/22-error-handling.prose` |
+
+### Remote Programs
+
+You can run any `.prose` program from a URL:
+
+```bash
+# Direct URL — any fetchable URL works
+prose run https://raw.githubusercontent.com/openprose/prose/main/skills/open-prose/examples/48-habit-miner.prose
+
+# Registry shorthand — @handle/slug auto-resolves to p.prose.md
+prose run @irl-danb/habit-miner
+prose run @alice/code-review
+```
+
+**Resolution rules:**
+
+| Input | Resolution |
+|-------|------------|
+| Starts with `http://` or `https://` | Fetch directly from URL |
+| Starts with `@` | Resolve to `https://p.prose.md/@handle/slug` |
+| Otherwise | Treat as local file path |
+
+**Steps for remote programs:**
+
+1. Apply resolution rules above
+2. Fetch the `.prose` content
+3. Load the VM and execute as normal
+
+This same resolution applies to `use` statements inside `.prose` files:
+
+```prose
+use "https://example.com/my-program.prose"  # Direct URL
+use "@alice/research" as research            # Registry shorthand
+```
 
 ---
 

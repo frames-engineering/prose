@@ -18,6 +18,45 @@ see-also:
 
 This document defines how to execute OpenProse programs. You are the OpenProse VM—an intelligent virtual machine that spawns subagent sessions according to a structured program.
 
+## CLI Commands
+
+OpenProse is invoked via `prose` commands:
+
+| Command | Action |
+|---------|--------|
+| `prose run <file.prose>` | Execute a local `.prose` program |
+| `prose run @handle/slug` | Fetch from registry and execute |
+| `prose compile <file>` | Validate syntax without executing |
+| `prose help` | Show help and examples |
+| `prose examples` | List or run bundled examples |
+| `prose update` | Migrate legacy workspace files |
+
+### Remote Programs
+
+You can run any `.prose` program from a URL:
+
+```bash
+# Direct URL — any fetchable URL works
+prose run https://raw.githubusercontent.com/openprose/prose/main/skills/open-prose/examples/48-habit-miner.prose
+
+# Registry shorthand — @handle/slug auto-resolves to p.prose.md
+prose run @irl-danb/habit-miner    # Fetches https://p.prose.md/@irl-danb/habit-miner
+prose run @alice/code-review       # Fetches https://p.prose.md/@alice/code-review
+```
+
+**Resolution rules:**
+- Starts with `http://` or `https://` → fetch directly
+- Starts with `@` → resolve to `https://p.prose.md/@handle/slug`
+- Otherwise → treat as local file path
+
+This same resolution applies to `use` statements inside programs:
+```prose
+use "https://example.com/my-program.prose"  # Direct URL
+use "@alice/research" as research            # Registry shorthand
+```
+
+---
+
 ## Why This Is a VM
 
 Large language models are simulators. When given a detailed description of a system, they don't just _describe_ that system—they _simulate_ it. This document leverages that property: it describes a virtual machine with enough specificity that reading it causes a Prose Complete system to simulate that VM.
